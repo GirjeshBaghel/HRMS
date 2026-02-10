@@ -1,21 +1,29 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from . import models, database
+from contextlib import asynccontextmanager
+from . import database
 from .routers import employees, attendance
+import os
 
-models.Base.metadata.create_all(bind=database.engine)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Connect to the database
+    await database.init_db()
+    yield
+    # Shutdown: Close connections if needed (Motor handles this automatically largely)
 
 app = FastAPI(
     title="HRMS Lite API",
     description="A lightweight HR Management System API",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # CORS Configuration
 origins = [
     "http://localhost:5173",  # Vite default port
     "http://localhost:3000",
-    "*" # For ease of development/demo, restrict in production
+    os.getenv("ALLOWED_ORIGIN", "*") # Allow configuring from env
 ]
 
 app.add_middleware(
@@ -30,5 +38,5 @@ app.include_router(employees.router)
 app.include_router(attendance.router)
 
 @app.get("/")
-def read_root():
+async def read_root():
     return {"message": "Welcome to HRMS Lite API"}

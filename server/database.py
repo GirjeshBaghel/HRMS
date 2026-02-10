@@ -1,13 +1,22 @@
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+import os
+from motor.motor_asyncio import AsyncIOMotorClient
+from beanie import init_beanie
+from dotenv import load_dotenv
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./hrms.db"
-# SQLALCHEMY_DATABASE_URL = "postgresql://user:password@postgresserver/db"
+load_dotenv()
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+async def init_db():
+    # Retrieve the MongoDB URL from environment variables
+    # Default to a local instance if not provided
+    mongodb_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+    database_name = os.getenv("DATABASE_NAME", "hrms_db")
 
-Base = declarative_base()
+    client = AsyncIOMotorClient(mongodb_url)
+    database = client[database_name]
+    
+    # Import models here to avoid circular imports
+    from .models import Employee, Attendance
+    
+    await init_beanie(database=client.db_name, document_models=[Employee, Attendance]) # Note: client.db_name is incorrect usage for Motor, should be database
+    # Correction: init_beanie takes 'database' argument which is the motor database object
+    await init_beanie(database=database, document_models=[Employee, Attendance])

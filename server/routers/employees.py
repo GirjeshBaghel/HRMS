@@ -1,7 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, HTTPException, status
 from typing import List
-from .. import crud, models, schemas, database
+from .. import crud, schemas
 
 router = APIRouter(
     prefix="/employees",
@@ -9,40 +8,46 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 @router.post("/", response_model=schemas.Employee, status_code=status.HTTP_201_CREATED)
-def create_employee(employee: schemas.EmployeeCreate, db: Session = Depends(get_db)):
-    db_employee = crud.get_employee_by_email(db, email=employee.email)
+async def create_employee(employee: schemas.EmployeeCreate):
+    db_employee = await crud.get_employee_by_email(email=employee.email)
     if db_employee:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    db_employee_id = crud.get_employee_by_emp_id(db, emp_id=employee.employee_id)
+    db_employee_id = await crud.get_employee_by_emp_id(emp_id=employee.employee_id)
     if db_employee_id:
         raise HTTPException(status_code=400, detail="Employee ID already exists")
         
-    return crud.create_employee(db=db, employee=employee)
+    return await crud.create_employee(employee=employee)
 
 @router.get("/", response_model=List[schemas.Employee])
-def read_employees(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    employees = crud.get_employees(db, skip=skip, limit=limit)
+async def read_employees(skip: int = 0, limit: int = 100):
+    employees = await crud.get_employees(skip=skip, limit=limit)
     return employees
 
 @router.get("/{employee_id}", response_model=schemas.Employee)
-def read_employee(employee_id: int, db: Session = Depends(get_db)):
-    db_employee = crud.get_employee(db, employee_id=employee_id)
+async def read_employee(employee_id: str):
+    # Here employee_id can be ObjectId or Business ID
+    # Let's try to match by Business ID first as that was the previous behavior for external ID reference?
+    # No, usually in REST /resource/{id} refers to the internal ID.
+    # But checking crud.py: `get_employee` tries `PydanticObjectId(employee_id)`.
+    # Failing that, we should try `get_employee_by_emp_id`?
+    # Let's check crud.py implementation of `get_employee` again:
+    # `try: oid = PydanticObjectId; return await Employee.get(oid)`
+    # It returns None if invalid ObjectId.
+    
+    db_employee = await crud.get_employee(employee_id=employee_id)
+    if not db_employee:
+        # Fallback: try by business ID
+        db_employee = await crud.get_employee_by_emp_id(emp_id=employee_id)
+        
     if db_employee is None:
         raise HTTPException(status_code=404, detail="Employee not found")
     return db_employee
 
 @router.delete("/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_employee(employee_id: int, db: Session = Depends(get_db)):
-    success = crud.delete_employee(db, employee_id=employee_id)
+async def delete_employee(employee_id: str):
+    success = await crud.delete_employee(employee_id=employee_id)
     if not success:
         raise HTTPException(status_code=404, detail="Employee not found")
     return None

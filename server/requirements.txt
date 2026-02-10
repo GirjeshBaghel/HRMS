@@ -1,7 +1,5 @@
 fastapi
 uvicorn
-sqlalchemy
-pydantic
+motor
+beanie
 python-dotenv
-alembic
-psycopg2-binary
